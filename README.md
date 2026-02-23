@@ -51,15 +51,10 @@ open target/release/bundle/osx/cliip-show.app
 
 ## Homebrewで公開する手順
 
-<https://github.com/somei-san/cliip-show/blob/main/docs/Homebrewで公開する手順.md>
+[Homebrewで公開する手順](docs/Homebrewで公開する手順.md)
 
 ## Homebrew tapリポジトリ
 
 <https://github.com/somei-san/homebrew-tools>
 
 [README](https://github.com/somei-san/homebrew-tools/README.md)
-
-
-## ドキュメント
-
-- [Homebrew公開と常駐起動の手順](docs/Homebrewで公開する手順.md)

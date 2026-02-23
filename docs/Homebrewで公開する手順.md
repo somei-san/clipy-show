@@ -1,6 +1,6 @@
 # Homebrewで公開する手順
 
-## 1. GitHub Releaseを作る
+## 1. タグを作成して push する
 
 例: `v0.1.0` タグを作成して push する
 
@@ -18,10 +18,12 @@ git push origin v0.1.0
 このリポジトリで以下を実行:
 
 ```bash
-./scripts/homebrew/generate_formula.sh somei-san {バージョン(exp: 0.1.0)} ./Formula/cliip-show.rb
+./scripts/homebrew/generate_formula.sh somei-san 0.1.0 ./Formula/cliip-show.rb
 ```
 
-生成された `Formula/cliip-show.rb` を [tap リポジトリ](##-2.-Homebrew-tapリポジトリ)の `Formula/cliip-show.rb` としてコミットして push してください。
+※ バージョンは `0.1.0`（`v` なし）形式を推奨します。
+
+生成された `Formula/cliip-show.rb` を [tap リポジトリ](https://github.com/somei-san/homebrew-tools)の `Formula/cliip-show.rb` としてコミットして push してください。
 
 テンプレートは `packaging/homebrew/cliip-show.rb.template` にあります。
 

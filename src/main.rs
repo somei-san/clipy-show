@@ -10,16 +10,25 @@ use objc2_foundation::{NSPoint, NSRect, NSSize};
 const UTF8_ENCODING: usize = 4;
 const POLL_INTERVAL_SECS: f64 = 0.3;
 const HUD_DURATION_SECS: f64 = 1.0;
-const HUD_WIDTH: f64 = 700.0;
-const HUD_HEIGHT: f64 = 160.0;
 const BORDERLESS_MASK: usize = 0;
 const BACKING_BUFFERED: isize = 2;
 const FLOATING_WINDOW_LEVEL: isize = 3;
+const HUD_MIN_WIDTH: f64 = 200.0;
+const HUD_MAX_WIDTH: f64 = 820.0;
+const HUD_MIN_HEIGHT: f64 = 60.0;
+const HUD_MAX_HEIGHT: f64 = 280.0;
+const HUD_HORIZONTAL_PADDING: f64 = 18.0;
+const HUD_VERTICAL_PADDING: f64 = 14.0;
+const HUD_ICON_WIDTH: f64 = 20.0;
+const HUD_GAP: f64 = 10.0;
+const HUD_CHAR_WIDTH_ESTIMATE: f64 = 9.6;
+const HUD_LINE_HEIGHT_ESTIMATE: f64 = 26.0;
 
 struct AppState {
     last_change_count: isize,
     pasteboard: *mut AnyObject,
     window: *mut AnyObject,
+    icon_label: *mut AnyObject,
     label: *mut AnyObject,
     hide_timer: *mut AnyObject,
 }
@@ -74,12 +83,13 @@ extern "C" fn application_did_finish_launching(this: &AnyObject, _: Sel, _: *mut
         let pasteboard: *mut AnyObject = msg_send![class!(NSPasteboard), generalPasteboard];
         let last_change_count: isize = msg_send![pasteboard, changeCount];
 
-        let (window, label) = create_hud_window();
+        let (window, icon_label, label) = create_hud_window();
 
         *APP_STATE.lock().expect("APP_STATE lock poisoned") = Some(AppState {
             last_change_count,
             pasteboard,
             window,
+            icon_label,
             label,
             hide_timer: ptr::null_mut(),
         });
@@ -117,13 +127,12 @@ extern "C" fn poll_pasteboard(this: &AnyObject, _: Sel, _: *mut AnyObject) {
         };
 
         let truncated = truncate_text(&text, 100, 5);
-        let display = format!("📋 {}", truncated);
-
-        let message = nsstring_from_str(&display);
+        let message = nsstring_from_str(&truncated);
         let () = msg_send![state.label, setStringValue: message];
         let () = msg_send![message, release];
 
-        center_window(state.window, HUD_WIDTH, HUD_HEIGHT);
+        let (hud_width, hud_height) = hud_size_for_text(&truncated);
+        layout_hud(state.window, state.icon_label, state.label, hud_width, hud_height);
         let () = msg_send![state.window, orderFrontRegardless];
 
         if !state.hide_timer.is_null() {
@@ -158,16 +167,18 @@ extern "C" fn hide_hud(_: &AnyObject, _: Sel, _: *mut AnyObject) {
     }
 }
 
-unsafe fn create_hud_window() -> (*mut AnyObject, *mut AnyObject) {
+unsafe fn create_hud_window() -> (*mut AnyObject, *mut AnyObject, *mut AnyObject) {
+    let default_width = 600.0;
+    let default_height = HUD_MIN_HEIGHT;
     let mut rect = NSRect {
         origin: NSPoint { x: 0.0, y: 0.0 },
         size: NSSize {
-            width: HUD_WIDTH,
-            height: HUD_HEIGHT,
+            width: default_width,
+            height: default_height,
         },
     };
 
-    if let Some((x, y)) = centered_origin(HUD_WIDTH, HUD_HEIGHT) {
+    if let Some((x, y)) = centered_origin(default_width, default_height) {
         rect.origin = NSPoint { x, y };
     }
 
@@ -191,18 +202,55 @@ unsafe fn create_hud_window() -> (*mut AnyObject, *mut AnyObject) {
     let content_view: *mut AnyObject = msg_send![window, contentView];
     let () = msg_send![content_view, setWantsLayer: true];
     let layer: *mut AnyObject = msg_send![content_view, layer];
-    let () = msg_send![layer, setCornerRadius: 6.0f64];
+    let () = msg_send![layer, setCornerRadius: 14.0f64];
     let () = msg_send![layer, setMasksToBounds: true];
 
-    let bg: *mut AnyObject = msg_send![class!(NSColor), colorWithCalibratedWhite: 0.0f64 alpha: 0.8f64];
+    let bg: *mut AnyObject = msg_send![class!(NSColor), colorWithCalibratedWhite: 0.0f64 alpha: 0.78f64];
     let cg_color: *mut c_void = msg_send![bg, CGColor];
     let () = msg_send![layer, setBackgroundColor: cg_color];
+    let border_color_obj: *mut AnyObject =
+        msg_send![class!(NSColor), colorWithCalibratedWhite: 1.0f64 alpha: 0.14f64];
+    let border_color: *mut c_void = msg_send![border_color_obj, CGColor];
+    let () = msg_send![layer, setBorderColor: border_color];
+    let () = msg_send![layer, setBorderWidth: 1.0f64];
+
+    let icon_rect = NSRect {
+        origin: NSPoint {
+            x: HUD_HORIZONTAL_PADDING,
+            y: default_height - HUD_VERTICAL_PADDING - 26.0,
+        },
+        size: NSSize {
+            width: HUD_ICON_WIDTH,
+            height: 26.0,
+        },
+    };
+
+    let icon_label: *mut AnyObject = msg_send![class!(NSTextField), alloc];
+    let icon_label: *mut AnyObject = msg_send![icon_label, initWithFrame: icon_rect];
+    let () = msg_send![icon_label, setBezeled: false];
+    let () = msg_send![icon_label, setBordered: false];
+    let () = msg_send![icon_label, setEditable: false];
+    let () = msg_send![icon_label, setSelectable: false];
+    let () = msg_send![icon_label, setDrawsBackground: false];
+    let () = msg_send![icon_label, setAlignment: 0isize];
+    let () = msg_send![icon_label, setLineBreakMode: 0isize];
+    let () = msg_send![icon_label, setUsesSingleLineMode: true];
+    let white: *mut AnyObject = msg_send![class!(NSColor), whiteColor];
+    let () = msg_send![icon_label, setTextColor: white];
+    let icon_font: *mut AnyObject = msg_send![class!(NSFont), systemFontOfSize: 20.0f64];
+    let () = msg_send![icon_label, setFont: icon_font];
+    let icon_text = nsstring_from_str("📋");
+    let () = msg_send![icon_label, setStringValue: icon_text];
+    let () = msg_send![icon_text, release];
 
     let label_rect = NSRect {
-        origin: NSPoint { x: 20.0, y: 20.0 },
+        origin: NSPoint {
+            x: HUD_HORIZONTAL_PADDING + HUD_ICON_WIDTH + HUD_GAP,
+            y: HUD_VERTICAL_PADDING,
+        },
         size: NSSize {
-            width: HUD_WIDTH - 40.0,
-            height: HUD_HEIGHT - 40.0,
+            width: default_width - (HUD_HORIZONTAL_PADDING * 2.0 + HUD_ICON_WIDTH + HUD_GAP),
+            height: default_height - HUD_VERTICAL_PADDING * 2.0,
         },
     };
 
@@ -217,9 +265,8 @@ unsafe fn create_hud_window() -> (*mut AnyObject, *mut AnyObject) {
     let () = msg_send![label, setLineBreakMode: 0isize];
     let () = msg_send![label, setUsesSingleLineMode: false];
     let () = msg_send![label, setMaximumNumberOfLines: 5isize];
-    let () = msg_send![label, setAlignment: 1isize];
+    let () = msg_send![label, setAlignment: 0isize];
 
-    let white: *mut AnyObject = msg_send![class!(NSColor), whiteColor];
     let () = msg_send![label, setTextColor: white];
 
     let menlo_name = nsstring_from_str("Menlo");
@@ -236,14 +283,15 @@ unsafe fn create_hud_window() -> (*mut AnyObject, *mut AnyObject) {
         let () = msg_send![cell, setLineBreakMode: 0isize];
     }
 
-    let default_text = nsstring_from_str("📋");
+    let default_text = nsstring_from_str("Clipboard text");
     let () = msg_send![label, setStringValue: default_text];
     let () = msg_send![default_text, release];
 
+    let () = msg_send![content_view, addSubview: icon_label];
     let () = msg_send![content_view, addSubview: label];
     let () = msg_send![window, orderOut: ptr::null_mut::<AnyObject>()];
 
-    (window, label)
+    (window, icon_label, label)
 }
 
 unsafe fn centered_origin(width: f64, height: f64) -> Option<(f64, f64)> {
@@ -268,6 +316,39 @@ unsafe fn center_window(window: *mut AnyObject, width: f64, height: f64) {
         size: NSSize { width, height },
     };
     let () = msg_send![window, setFrame: rect display: true];
+}
+
+unsafe fn layout_hud(
+    window: *mut AnyObject,
+    icon_label: *mut AnyObject,
+    label: *mut AnyObject,
+    width: f64,
+    height: f64,
+) {
+    let icon_rect = NSRect {
+        origin: NSPoint {
+            x: HUD_HORIZONTAL_PADDING,
+            y: height - HUD_VERTICAL_PADDING - 26.0,
+        },
+        size: NSSize {
+            width: HUD_ICON_WIDTH,
+            height: 26.0,
+        },
+    };
+    let label_rect = NSRect {
+        origin: NSPoint {
+            x: HUD_HORIZONTAL_PADDING + HUD_ICON_WIDTH + HUD_GAP,
+            y: HUD_VERTICAL_PADDING,
+        },
+        size: NSSize {
+            width: width - (HUD_HORIZONTAL_PADDING * 2.0 + HUD_ICON_WIDTH + HUD_GAP),
+            height: height - HUD_VERTICAL_PADDING * 2.0,
+        },
+    };
+
+    let () = msg_send![icon_label, setFrame: icon_rect];
+    let () = msg_send![label, setFrame: label_rect];
+    center_window(window, width, height);
 }
 
 unsafe fn nsstring_from_str(value: &str) -> *mut AnyObject {
@@ -339,6 +420,29 @@ fn append_ellipsis(line: &str, max_width: usize) -> String {
 
     let kept: String = line.chars().take(max_width - 3).collect();
     format!("{kept}...")
+}
+
+fn hud_size_for_text(text: &str) -> (f64, f64) {
+    let lines: Vec<&str> = text.split('\n').collect();
+    let max_chars = lines.iter().map(|line| line.chars().count()).max().unwrap_or(1);
+
+    let width = (max_chars as f64 * HUD_CHAR_WIDTH_ESTIMATE
+        + HUD_HORIZONTAL_PADDING * 2.0
+        + HUD_ICON_WIDTH
+        + HUD_GAP)
+        .clamp(HUD_MIN_WIDTH, HUD_MAX_WIDTH);
+    let text_area_width = width - (HUD_HORIZONTAL_PADDING * 2.0 + HUD_ICON_WIDTH + HUD_GAP);
+    let chars_per_visual_line = ((text_area_width / HUD_CHAR_WIDTH_ESTIMATE).floor() as usize).max(1);
+
+    let visual_lines: usize = lines
+        .iter()
+        .map(|line| line.chars().count().max(1).div_ceil(chars_per_visual_line))
+        .sum();
+    let visual_lines = visual_lines.clamp(1, 10);
+
+    let height = (visual_lines as f64 * HUD_LINE_HEIGHT_ESTIMATE + HUD_VERTICAL_PADDING * 2.0)
+        .clamp(HUD_MIN_HEIGHT, HUD_MAX_HEIGHT);
+    (width, height)
 }
 
 #[cfg(test)]

@@ -28,7 +28,7 @@
 
 ## HUDイメージ
 
-![cliip-show HUDの表示イメージ](docs/assets/cliip-show-hud.svg)
+![cliip-show HUDの表示イメージ](docs/assets/cliip-show-hud.png)
 
 ## 開発者向け
 

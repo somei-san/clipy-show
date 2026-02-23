@@ -30,13 +30,15 @@
 
 ![cliip-show HUDの表示イメージ](docs/assets/cliip-show-hud.svg)
 
-## 開発起動
+## 開発者向け
+
+### 開発起動
 
 ```bash
 cargo run
 ```
 
-## 開発者向け: .app化して動作確認
+### .app化して動作確認
 
 ローカルで `.app` として起動確認したい場合のみ実行してください。  
 通常は Homebrew 経由での利用を想定しています。
@@ -46,6 +48,10 @@ cargo install cargo-bundle
 cargo bundle --release
 open target/release/bundle/osx/cliip-show.app
 ```
+
+## Homebrewで公開する手順
+
+<https://github.com/somei-san/cliip-show/blob/main/docs/Homebrewで公開する手順.md>
 
 ## Homebrew tapリポジトリ
 

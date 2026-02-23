@@ -1,89 +1,47 @@
-# homebrew-tools
+# clip-show
 
-`clip-show` などを Homebrew で配布するための Tap リポジトリです。
+## 背景
 
-- tap repository: <https://github.com/somei-san/homebrew-tools>
+コピーしたと思ったのにできてなかった！ペーストしたら意図したコピー内容と違った！！
 
-## 機能1: clip-show
+😡 😡 😡
 
-- source repository: <https://github.com/somei-san/clip-show>
-- formula: `Formula/clip-show.rb`
+そんなことありませんか？
 
-### clip-show とは
+ありますよねぇ〜
 
-`clip-show` は macOS 向けの常駐アプリです。  
-クリップボードにコピーされたプレーンテキストを検知し、画面中央に短時間（約1秒）HUD 表示します。
+てなわけで、
 
-### インストール（初回導入）
+クリップボードにコピーしたときにコピー内容が表示されるアプリ
 
-```bash
-brew tap somei-san/tools
-brew install somei-san/tools/clip-show
-brew services start clip-show
-```
+のソースコードです
 
-各コマンドの意味:
+## 概要
 
-1. `brew tap somei-san/tools`: `somei-san/tools` Tap を Homebrew に登録します。
-2. `brew install clip-show`: Tap に含まれる `clip-show` Formula から本体をインストールします。
-3. `brew services start clip-show`: `clip-show` を常駐起動し、ログイン時の自動起動も有効にします（初期導入時は必須）。
+コピーされたプレーンテキストを画面中央に1秒だけHUD表示する、macOS常駐アプリです。
 
-1 行で実行する場合:
+## 開発起動
 
 ```bash
-brew tap somei-san/tools && brew install somei-san/tools/clip-show && brew services start clip-show
+cargo run
 ```
 
-### 起動・停止（ログイン時自動起動）
-
-`clip-show` は Homebrew Service として動作します。
+## .app化
 
 ```bash
-brew services start clip-show
+cargo install cargo-bundle
+cargo bundle --release
+open target/release/bundle/osx/clip-show.app
 ```
 
-停止:
+普通はHomebrew経由でインストールするので不要。
 
-```bash
-brew services stop clip-show
-```
+## Homebrew tapリポジトリ
 
-状態確認:
+<https://github.com/somei-san/homebrew-tools>
 
-```bash
-brew services list
-```
+[README](https://github.com/somei-san/homebrew-tools/README.md)
 
-### 動作確認
+## ドキュメント
 
-```bash
-clip-show --version
-clip-show --help
-```
-
-### ログ
-
-Homebrew のログ出力先:
-
-```bash
-$(brew --prefix)/var/log/clip-show.log
-```
-
-### アンインストール
-
-```bash
-brew services stop clip-show
-brew uninstall clip-show
-```
-
-Tap 自体も外す場合:
-
-```bash
-brew untap somei-san/tools
-```
-
-### メンテナー向け
-
-詳細手順:
-
-<https://github.com/somei-san/clip-show/blob/main/docs/Homebrewで公開する手順.md>
+- Homebrew公開と常駐起動の手順: <https://github.com/somei-san/clip-show/blob/main/docs/Homebrewで公開する手順.md>

@@ -1,4 +1,5 @@
 use std::ffi::{c_char, c_void, CStr};
+use std::fmt::Write as _;
 use std::ptr;
 use std::sync::{Mutex, Once};
 
@@ -41,6 +42,10 @@ unsafe impl Send for AppState {}
 static APP_STATE: Mutex<Option<AppState>> = Mutex::new(None);
 
 fn main() {
+    if handle_cli_flags() {
+        return;
+    }
+
     unsafe {
         let app: *mut AnyObject = msg_send![class!(NSApplication), sharedApplication];
         let _: bool = msg_send![app, setActivationPolicy: 1isize];
@@ -49,6 +54,37 @@ fn main() {
         let delegate: *mut AnyObject = msg_send![delegate_class, new];
         let () = msg_send![app, setDelegate: delegate];
         let () = msg_send![app, run];
+    }
+}
+
+fn handle_cli_flags() -> bool {
+    let mut args = std::env::args();
+    let _program = args.next();
+    let Some(flag) = args.next() else {
+        return false;
+    };
+
+    match flag.as_str() {
+        "--version" | "-V" => {
+            println!("{}", env!("CARGO_PKG_VERSION"));
+            true
+        }
+        "--help" | "-h" => {
+            let mut help = String::new();
+            let _ = writeln!(help, "clip-show {}", env!("CARGO_PKG_VERSION"));
+            let _ = writeln!(help, "clipboard HUD resident app for macOS");
+            let _ = writeln!(help);
+            let _ = writeln!(help, "Options:");
+            let _ = writeln!(help, "  -h, --help       Print help");
+            let _ = writeln!(help, "  -V, --version    Print version");
+            print!("{help}");
+            true
+        }
+        unknown => {
+            eprintln!("Unknown option: {unknown}");
+            eprintln!("Use --help to see available options.");
+            std::process::exit(2);
+        }
     }
 }
 

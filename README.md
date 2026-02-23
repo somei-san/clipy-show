@@ -3,11 +3,12 @@
 ## 背景
 
 コピーしたと思ったのにできてなかった！ペーストしたら意図したコピー内容と違った！！
-そんなことありませんか？ありますよねぇ〜
+そんなことありませんか？
+ありますよねぇ〜
 
 てなわけで、
-クリップボードにコピーしたときにコピー内容が表示される
-（ようにしたい）
+クリップボードにコピーしたときにコピー内容が表示されるアプリ
+のソースコードです
 
 ## 概要
 
@@ -26,3 +27,13 @@ cargo install cargo-bundle
 cargo bundle --release
 open target/release/bundle/osx/clip-show.app
 ```
+
+## Homebrewリポジトリ
+
+https://github.com/somei-san/homebrew-clip-show
+
+[README](https://github.com/somei-san/homebrew-clip-show/README.md)
+
+## ドキュメント
+
+- Homebrew公開と常駐起動の手順: `docs/homebrew.md`

@@ -18,7 +18,7 @@ git push origin v0.1.0
 このリポジトリで以下を実行:
 
 ```bash
-./scripts/homebrew/generate_formula.sh somei-san {バージョン(exp: 0.0.1)} ./Formula/cliip-show.rb
+./scripts/homebrew/generate_formula.sh somei-san {バージョン(exp: 0.1.0)} ./Formula/cliip-show.rb
 ```
 
 生成された `Formula/cliip-show.rb` を [tap リポジトリ](##-2.-Homebrew-tapリポジトリ)の `Formula/cliip-show.rb` としてコミットして push してください。

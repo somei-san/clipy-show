@@ -2,7 +2,7 @@ class CliipShow < Formula
   desc "Show copied clipboard text as a HUD on macOS"
   homepage "https://github.com/somei-san/cliip-show"
   url "https://github.com/somei-san/cliip-show/archive/refs/tags/v0.1.0.tar.gz"
-  sha256 "9e4b47e27bbfd52506f15f73acff742a5693295702bbcbb2148e031ae8609480"
+  sha256 "efa41ea27a0c2265f2b625967b5fac890a76a630082d189150826fb00f9b687c"
   license "MIT"
   head "https://github.com/somei-san/cliip-show.git", branch: "main"
 
@@ -11,6 +11,16 @@ class CliipShow < Formula
 
   def install
     system "cargo", "install", *std_cargo_args(path: ".")
+  end
+
+  def caveats
+    <<~EOS
+      To launch cliip-show now and restart at login:
+        brew services start cliip-show
+
+      To stop:
+        brew services stop cliip-show
+    EOS
   end
 
   service do

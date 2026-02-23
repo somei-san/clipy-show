@@ -57,4 +57,3 @@ open target/release/bundle/osx/cliip-show.app
 
 <https://github.com/somei-san/homebrew-tools>
 
-[README](https://github.com/somei-san/homebrew-tools/README.md)

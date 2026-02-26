@@ -30,6 +30,14 @@
 
 ![cliip-show HUDの表示イメージ](docs/assets/cliip-show-hud.png)
 
+## インストール手順 （Homebrew経由）
+
+```bash
+brew tap somei-san/tools
+brew install somei-san/tools/cliip-show
+brew services start cliip-show
+```
+
 ## 開発者向け
 
 ### 開発起動

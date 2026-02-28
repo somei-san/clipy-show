@@ -11,6 +11,40 @@
 cargo run
 ```
 
+## 表示設定
+
+Homebrewアプリとしての通常運用では、設定ファイルに保存して管理します。
+
+設定ファイル:
+- 既定パス: `~/Library/Application Support/cliip-show/config.toml`
+- パス変更: `CLIIP_SHOW_CONFIG_PATH=/path/to/config.toml`
+
+初期化と確認:
+
+```bash
+cliip-show --config init
+cliip-show --config show
+```
+
+設定値を保存:
+
+```bash
+cliip-show --config set hud_duration_secs 2.5
+cliip-show --config set max_lines 3
+```
+
+設定キー:
+- `poll_interval_secs`（`0.05` - `5.0`）
+- `hud_duration_secs`（`0.1` - `10.0`）
+- `max_chars_per_line`（`1` - `500`）
+- `max_lines`（`1` - `20`）
+
+環境変数でも上書き可能です（設定ファイルより優先）。
+
+```bash
+CLIIP_SHOW_HUD_DURATION_SECS=2.5 CLIIP_SHOW_MAX_LINES=3 cargo run
+```
+
 ## `.app` 化して動作確認
 
 ローカルで `.app` として起動確認したい場合のみ実行してください。  
@@ -105,4 +139,3 @@ git push origin v0.1.1
 ### 5. ユーザーのインストール手順
 
 [TapリポジトリのREADME参照](https://github.com/somei-san/homebrew-tools/blob/main/README.md)
-

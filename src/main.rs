@@ -26,6 +26,8 @@ const HUD_GAP: f64 = 8.0;
 const HUD_CHAR_WIDTH_ESTIMATE: f64 = 9.6;
 const HUD_LINE_HEIGHT_ESTIMATE: f64 = 22.0;
 const HUD_TEXT_MEASURE_HEIGHT: f64 = 10_000.0;
+const BITMAP_IMAGE_FILE_TYPE_PNG: usize = 4;
+const PIXEL_CHANNEL_TOLERANCE: u8 = 2;
 
 struct AppState {
     last_change_count: isize,
@@ -38,6 +40,22 @@ struct AppState {
 
 // All UI interactions happen on the AppKit main thread.
 unsafe impl Send for AppState {}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct HudLayoutMetrics {
+    width: f64,
+    text_width: f64,
+    height: f64,
+    text_height: f64,
+    label_y: f64,
+    icon_y: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct DiffSummary {
+    diff_pixels: usize,
+    total_pixels: usize,
+}
 
 static APP_STATE: Mutex<Option<AppState>> = Mutex::new(None);
 
@@ -77,7 +95,116 @@ fn handle_cli_flags() -> bool {
             let _ = writeln!(help, "Options:");
             let _ = writeln!(help, "  -h, --help       Print help");
             let _ = writeln!(help, "  -v, -V, --version    Print version");
+            let _ = writeln!(
+                help,
+                "  --render-hud-png --text <TEXT> --output <PATH>    Render HUD snapshot PNG and exit"
+            );
+            let _ = writeln!(
+                help,
+                "  --diff-png --baseline <PATH> --current <PATH> --output <PATH>    Generate visual diff PNG and exit"
+            );
             print!("{help}");
+            true
+        }
+        "--render-hud-png" => {
+            let mut text: Option<String> = None;
+            let mut output_path: Option<String> = None;
+
+            while let Some(arg) = args.next() {
+                match arg.as_str() {
+                    "--text" => {
+                        let Some(value) = args.next() else {
+                            eprintln!("Missing value for --text");
+                            std::process::exit(2);
+                        };
+                        text = Some(value);
+                    }
+                    "--output" => {
+                        let Some(value) = args.next() else {
+                            eprintln!("Missing value for --output");
+                            std::process::exit(2);
+                        };
+                        output_path = Some(value);
+                    }
+                    unknown => {
+                        eprintln!("Unknown option for --render-hud-png: {unknown}");
+                        std::process::exit(2);
+                    }
+                }
+            }
+
+            let text = text.unwrap_or_else(|| "Clipboard text".to_string());
+            let Some(output_path) = output_path else {
+                eprintln!("--output is required for --render-hud-png");
+                std::process::exit(2);
+            };
+
+            if let Err(error) = render_hud_png(&text, &output_path) {
+                eprintln!("{error}");
+                std::process::exit(1);
+            }
+            true
+        }
+        "--diff-png" => {
+            let mut baseline_path: Option<String> = None;
+            let mut current_path: Option<String> = None;
+            let mut output_path: Option<String> = None;
+
+            while let Some(arg) = args.next() {
+                match arg.as_str() {
+                    "--baseline" => {
+                        let Some(value) = args.next() else {
+                            eprintln!("Missing value for --baseline");
+                            std::process::exit(2);
+                        };
+                        baseline_path = Some(value);
+                    }
+                    "--current" => {
+                        let Some(value) = args.next() else {
+                            eprintln!("Missing value for --current");
+                            std::process::exit(2);
+                        };
+                        current_path = Some(value);
+                    }
+                    "--output" => {
+                        let Some(value) = args.next() else {
+                            eprintln!("Missing value for --output");
+                            std::process::exit(2);
+                        };
+                        output_path = Some(value);
+                    }
+                    unknown => {
+                        eprintln!("Unknown option for --diff-png: {unknown}");
+                        std::process::exit(2);
+                    }
+                }
+            }
+
+            let Some(baseline_path) = baseline_path else {
+                eprintln!("--baseline is required for --diff-png");
+                std::process::exit(2);
+            };
+            let Some(current_path) = current_path else {
+                eprintln!("--current is required for --diff-png");
+                std::process::exit(2);
+            };
+            let Some(output_path) = output_path else {
+                eprintln!("--output is required for --diff-png");
+                std::process::exit(2);
+            };
+
+            match generate_diff_png(&baseline_path, &current_path, &output_path) {
+                Ok(summary) => {
+                    println!(
+                        "diff_pixels={} total_pixels={}",
+                        summary.diff_pixels, summary.total_pixels
+                    );
+                }
+                Err(error) => {
+                    eprintln!("{error}");
+                    std::process::exit(1);
+                }
+            }
             true
         }
         unknown => {
@@ -85,6 +212,209 @@ fn handle_cli_flags() -> bool {
             eprintln!("Use --help to see available options.");
             std::process::exit(2);
         }
+    }
+}
+
+fn render_hud_png(text: &str, output_path: &str) -> Result<(), String> {
+    unsafe {
+        let _app: *mut AnyObject = msg_send![class!(NSApplication), sharedApplication];
+        let (window, icon_label, label) = create_hud_window();
+        let truncated = truncate_text(text, 100, 5);
+        let message = nsstring_from_str(&truncated);
+        let () = msg_send![label, setStringValue: message];
+        let () = msg_send![message, release];
+        let hud_width = hud_width_for_text(&truncated);
+        layout_hud(window, icon_label, label, hud_width);
+
+        let content_view: *mut AnyObject = msg_send![window, contentView];
+        if content_view.is_null() {
+            return Err("failed to get contentView".to_string());
+        }
+
+        let bounds: NSRect = msg_send![content_view, bounds];
+        let bitmap = create_bitmap_rep_for_bounds(bounds)?;
+        if bitmap.is_null() {
+            return Err("failed to create bitmap image rep".to_string());
+        }
+
+        let () = msg_send![content_view, cacheDisplayInRect: bounds toBitmapImageRep: bitmap];
+        let properties: *mut AnyObject = msg_send![class!(NSDictionary), dictionary];
+        let data: *mut AnyObject = msg_send![
+            bitmap,
+            representationUsingType: BITMAP_IMAGE_FILE_TYPE_PNG
+            properties: properties
+        ];
+        if data.is_null() {
+            return Err("failed to encode PNG data".to_string());
+        }
+
+        let output_path_ns = nsstring_from_str(output_path);
+        let success: bool = msg_send![data, writeToFile: output_path_ns atomically: true];
+        let () = msg_send![output_path_ns, release];
+        let () = msg_send![window, close];
+
+        if !success {
+            return Err(format!("failed to write PNG: {output_path}"));
+        }
+    }
+
+    Ok(())
+}
+
+fn generate_diff_png(
+    baseline_path: &str,
+    current_path: &str,
+    output_path: &str,
+) -> Result<DiffSummary, String> {
+    unsafe {
+        let baseline_path_ns = nsstring_from_str(baseline_path);
+        let baseline_rep: *mut AnyObject =
+            msg_send![class!(NSBitmapImageRep), imageRepWithContentsOfFile: baseline_path_ns];
+        let () = msg_send![baseline_path_ns, release];
+        if baseline_rep.is_null() {
+            return Err(format!("failed to load baseline PNG: {baseline_path}"));
+        }
+
+        let current_path_ns = nsstring_from_str(current_path);
+        let current_rep: *mut AnyObject =
+            msg_send![class!(NSBitmapImageRep), imageRepWithContentsOfFile: current_path_ns];
+        let () = msg_send![current_path_ns, release];
+        if current_rep.is_null() {
+            return Err(format!("failed to load current PNG: {current_path}"));
+        }
+
+        let baseline_width: isize = msg_send![baseline_rep, pixelsWide];
+        let baseline_height: isize = msg_send![baseline_rep, pixelsHigh];
+        let current_width: isize = msg_send![current_rep, pixelsWide];
+        let current_height: isize = msg_send![current_rep, pixelsHigh];
+        if baseline_width != current_width || baseline_height != current_height {
+            return Err(format!(
+                "image size mismatch: baseline={}x{}, current={}x{}",
+                baseline_width, baseline_height, current_width, current_height
+            ));
+        }
+
+        let diff_rep: *mut AnyObject = msg_send![current_rep, copy];
+        if diff_rep.is_null() {
+            return Err("failed to create diff image".to_string());
+        }
+
+        let mut diff_pixels: usize = 0;
+        let total_pixels = (baseline_width * baseline_height) as usize;
+
+        for x in 0..baseline_width {
+            for y in 0..baseline_height {
+                let baseline_color: *mut AnyObject = msg_send![baseline_rep, colorAtX: x y: y];
+                let current_color: *mut AnyObject = msg_send![current_rep, colorAtX: x y: y];
+                let Some((br, bg, bb, ba)) = color_components(baseline_color) else {
+                    continue;
+                };
+                let Some((cr, cg, cb, ca)) = color_components(current_color) else {
+                    continue;
+                };
+
+                let same = to_u8(br) == to_u8(cr)
+                    && to_u8(bg) == to_u8(cg)
+                    && to_u8(bb) == to_u8(cb)
+                    && to_u8(ba) == to_u8(ca);
+
+                let same = same
+                    || (to_u8(br).abs_diff(to_u8(cr)) <= PIXEL_CHANNEL_TOLERANCE
+                        && to_u8(bg).abs_diff(to_u8(cg)) <= PIXEL_CHANNEL_TOLERANCE
+                        && to_u8(bb).abs_diff(to_u8(cb)) <= PIXEL_CHANNEL_TOLERANCE
+                        && to_u8(ba).abs_diff(to_u8(ca)) <= PIXEL_CHANNEL_TOLERANCE);
+
+                let color: *mut AnyObject = if same {
+                    let gray = ((cr + cg + cb) / 3.0).clamp(0.0, 1.0);
+                    msg_send![class!(NSColor), colorWithCalibratedRed: gray green: gray blue: gray alpha: 0.08f64]
+                } else {
+                    diff_pixels += 1;
+                    let delta = (to_u8(cr).abs_diff(to_u8(br)))
+                        .max(to_u8(cg).abs_diff(to_u8(bg)))
+                        .max(to_u8(cb).abs_diff(to_u8(bb)));
+                    let intensity = (f64::from(delta.max(128))) / 255.0;
+                    msg_send![class!(NSColor), colorWithCalibratedRed: intensity green: 0.0f64 blue: 0.0f64 alpha: 0.9f64]
+                };
+                let () = msg_send![diff_rep, setColor: color atX: x y: y];
+            }
+        }
+
+        let properties: *mut AnyObject = msg_send![class!(NSDictionary), dictionary];
+        let data: *mut AnyObject = msg_send![
+            diff_rep,
+            representationUsingType: BITMAP_IMAGE_FILE_TYPE_PNG
+            properties: properties
+        ];
+        if data.is_null() {
+            let () = msg_send![diff_rep, release];
+            return Err("failed to encode diff PNG".to_string());
+        }
+
+        let output_path_ns = nsstring_from_str(output_path);
+        let success: bool = msg_send![data, writeToFile: output_path_ns atomically: true];
+        let () = msg_send![output_path_ns, release];
+        let () = msg_send![diff_rep, release];
+
+        if !success {
+            return Err(format!("failed to write diff PNG: {output_path}"));
+        }
+
+        Ok(DiffSummary {
+            diff_pixels,
+            total_pixels,
+        })
+    }
+}
+
+unsafe fn color_components(color: *mut AnyObject) -> Option<(f64, f64, f64, f64)> {
+    if color.is_null() {
+        return None;
+    }
+
+    let device_rgb_name = nsstring_from_str("NSDeviceRGBColorSpace");
+    let rgb_color: *mut AnyObject = msg_send![color, colorUsingColorSpaceName: device_rgb_name];
+    let () = msg_send![device_rgb_name, release];
+    if rgb_color.is_null() {
+        return None;
+    }
+
+    let r: f64 = msg_send![rgb_color, redComponent];
+    let g: f64 = msg_send![rgb_color, greenComponent];
+    let b: f64 = msg_send![rgb_color, blueComponent];
+    let a: f64 = msg_send![rgb_color, alphaComponent];
+    Some((r, g, b, a))
+}
+
+fn to_u8(component: f64) -> u8 {
+    (component.clamp(0.0, 1.0) * 255.0).round() as u8
+}
+
+fn create_bitmap_rep_for_bounds(bounds: NSRect) -> Result<*mut AnyObject, String> {
+    let width = bounds.size.width.ceil().max(1.0) as isize;
+    let height = bounds.size.height.ceil().max(1.0) as isize;
+    unsafe {
+        let bitmap: *mut AnyObject = msg_send![class!(NSBitmapImageRep), alloc];
+        let color_space = nsstring_from_str("NSCalibratedRGBColorSpace");
+        let bitmap: *mut AnyObject = msg_send![
+            bitmap,
+            initWithBitmapDataPlanes: ptr::null_mut::<*mut u8>()
+            pixelsWide: width
+            pixelsHigh: height
+            bitsPerSample: 8isize
+            samplesPerPixel: 4isize
+            hasAlpha: true
+            isPlanar: false
+            colorSpaceName: color_space
+            bytesPerRow: 0isize
+            bitsPerPixel: 0isize
+        ];
+        let () = msg_send![color_space, release];
+
+        if bitmap.is_null() {
+            return Err("failed to allocate fixed-size bitmap image rep".to_string());
+        }
+
+        Ok(bitmap)
     }
 }
 
@@ -104,10 +434,7 @@ fn get_delegate_class() -> &'static AnyClass {
             sel!(pollPasteboard:),
             poll_pasteboard as extern "C" fn(_, _, _),
         );
-        builder.add_method(
-            sel!(hideHud:),
-            hide_hud as extern "C" fn(_, _, _),
-        );
+        builder.add_method(sel!(hideHud:), hide_hud as extern "C" fn(_, _, _));
 
         let class = builder.register();
         CLASS = class as *const AnyClass;
@@ -243,7 +570,8 @@ unsafe fn create_hud_window() -> (*mut AnyObject, *mut AnyObject, *mut AnyObject
     let () = msg_send![layer, setCornerRadius: 14.0f64];
     let () = msg_send![layer, setMasksToBounds: true];
 
-    let bg: *mut AnyObject = msg_send![class!(NSColor), colorWithCalibratedWhite: 0.0f64 alpha: 0.78f64];
+    let bg: *mut AnyObject =
+        msg_send![class!(NSColor), colorWithCalibratedWhite: 0.0f64 alpha: 0.78f64];
     let cg_color: *mut c_void = msg_send![bg, CGColor];
     let () = msg_send![layer, setBackgroundColor: cg_color];
     let border_color_obj: *mut AnyObject =
@@ -255,7 +583,8 @@ unsafe fn create_hud_window() -> (*mut AnyObject, *mut AnyObject, *mut AnyObject
     let icon_rect = NSRect {
         origin: NSPoint {
             x: HUD_HORIZONTAL_PADDING,
-            y: ((default_height - HUD_LINE_HEIGHT_ESTIMATE) / 2.0 + HUD_LINE_HEIGHT_ESTIMATE - HUD_ICON_HEIGHT)
+            y: ((default_height - HUD_LINE_HEIGHT_ESTIMATE) / 2.0 + HUD_LINE_HEIGHT_ESTIMATE
+                - HUD_ICON_HEIGHT)
                 .max(HUD_VERTICAL_PADDING),
         },
         size: NSSize {
@@ -346,9 +675,7 @@ unsafe fn centered_origin(width: f64, height: f64) -> Option<(f64, f64)> {
 }
 
 unsafe fn center_window(window: *mut AnyObject, width: f64, height: f64) {
-    let Some((x, y)) = centered_origin(width, height) else {
-        return;
-    };
+    let (x, y) = centered_origin(width, height).unwrap_or((0.0, 0.0));
 
     let rect = NSRect {
         origin: NSPoint { x, y },
@@ -363,21 +690,15 @@ unsafe fn layout_hud(
     label: *mut AnyObject,
     width: f64,
 ) {
-    let text_width = width - (HUD_HORIZONTAL_PADDING * 2.0 + HUD_ICON_WIDTH + HUD_GAP);
-    let measured_text_height = measure_text_height(label, text_width)
-        .min((HUD_MAX_HEIGHT - HUD_VERTICAL_PADDING * 2.0).max(HUD_LINE_HEIGHT_ESTIMATE));
-    let height = (measured_text_height + HUD_VERTICAL_PADDING * 2.0).clamp(HUD_MIN_HEIGHT, HUD_MAX_HEIGHT);
-    let text_height = (height - HUD_VERTICAL_PADDING * 2.0)
-        .min(measured_text_height)
-        .max(HUD_LINE_HEIGHT_ESTIMATE);
-    let label_y = (height - text_height) / 2.0;
-    let icon_y = (label_y + text_height - HUD_ICON_HEIGHT)
-        .max(HUD_VERTICAL_PADDING)
-        .min(height - HUD_ICON_HEIGHT - HUD_VERTICAL_PADDING);
+    let clamped_width = width.clamp(HUD_MIN_WIDTH, HUD_MAX_WIDTH);
+    let text_width = clamped_width - (HUD_HORIZONTAL_PADDING * 2.0 + HUD_ICON_WIDTH + HUD_GAP);
+    let measured_text_height = measure_text_height(label, text_width);
+    let metrics = compute_hud_layout_metrics(clamped_width, measured_text_height);
+
     let icon_rect = NSRect {
         origin: NSPoint {
             x: HUD_HORIZONTAL_PADDING,
-            y: icon_y,
+            y: metrics.icon_y,
         },
         size: NSSize {
             width: HUD_ICON_WIDTH,
@@ -387,17 +708,17 @@ unsafe fn layout_hud(
     let label_rect = NSRect {
         origin: NSPoint {
             x: HUD_HORIZONTAL_PADDING + HUD_ICON_WIDTH + HUD_GAP,
-            y: label_y,
+            y: metrics.label_y,
         },
         size: NSSize {
-            width: width - (HUD_HORIZONTAL_PADDING * 2.0 + HUD_ICON_WIDTH + HUD_GAP),
-            height: text_height,
+            width: metrics.text_width,
+            height: metrics.text_height,
         },
     };
 
     let () = msg_send![icon_label, setFrame: icon_rect];
     let () = msg_send![label, setFrame: label_rect];
-    center_window(window, width, height);
+    center_window(window, metrics.width, metrics.height);
 }
 
 unsafe fn measure_text_height(label: *mut AnyObject, text_width: f64) -> f64 {
@@ -415,6 +736,31 @@ unsafe fn measure_text_height(label: *mut AnyObject, text_width: f64) -> f64 {
     };
     let size: NSSize = msg_send![cell, cellSizeForBounds: bounds];
     size.height.ceil().max(HUD_LINE_HEIGHT_ESTIMATE)
+}
+
+fn compute_hud_layout_metrics(width: f64, measured_text_height: f64) -> HudLayoutMetrics {
+    let width = width.clamp(HUD_MIN_WIDTH, HUD_MAX_WIDTH);
+    let text_width = width - (HUD_HORIZONTAL_PADDING * 2.0 + HUD_ICON_WIDTH + HUD_GAP);
+    let measured_text_height = measured_text_height
+        .min((HUD_MAX_HEIGHT - HUD_VERTICAL_PADDING * 2.0).max(HUD_LINE_HEIGHT_ESTIMATE));
+    let height =
+        (measured_text_height + HUD_VERTICAL_PADDING * 2.0).clamp(HUD_MIN_HEIGHT, HUD_MAX_HEIGHT);
+    let text_height = (height - HUD_VERTICAL_PADDING * 2.0)
+        .min(measured_text_height)
+        .max(HUD_LINE_HEIGHT_ESTIMATE);
+    let label_y = (height - text_height) / 2.0;
+    let icon_y = (label_y + text_height - HUD_ICON_HEIGHT)
+        .max(HUD_VERTICAL_PADDING)
+        .min(height - HUD_ICON_HEIGHT - HUD_VERTICAL_PADDING);
+
+    HudLayoutMetrics {
+        width,
+        text_width,
+        height,
+        text_height,
+        label_y,
+        icon_y,
+    }
 }
 
 unsafe fn nsstring_from_str(value: &str) -> *mut AnyObject {
@@ -495,10 +841,7 @@ fn hud_width_for_text(text: &str) -> f64 {
         .map(|line| line_display_units(line))
         .fold(1.0f64, f64::max);
 
-    (max_units * HUD_CHAR_WIDTH_ESTIMATE
-        + HUD_HORIZONTAL_PADDING * 2.0
-        + HUD_ICON_WIDTH
-        + HUD_GAP)
+    (max_units * HUD_CHAR_WIDTH_ESTIMATE + HUD_HORIZONTAL_PADDING * 2.0 + HUD_ICON_WIDTH + HUD_GAP)
         .clamp(HUD_MIN_WIDTH, HUD_MAX_WIDTH)
 }
 
@@ -528,7 +871,7 @@ fn line_display_units(line: &str) -> f64 {
 
 #[cfg(test)]
 mod tests {
-    use super::truncate_text;
+    use super::{compute_hud_layout_metrics, hud_width_for_text, truncate_text};
 
     #[test]
     fn truncates_single_long_line() {
@@ -539,12 +882,74 @@ mod tests {
     #[test]
     fn truncates_lines_count_and_adds_ellipsis_to_last_line() {
         let input = "line1\nline2\nline3\nline4\nline5\nline6";
-        assert_eq!(truncate_text(input, 100, 5), "line1\nline2\nline3\nline4\nline5...");
+        assert_eq!(
+            truncate_text(input, 100, 5),
+            "line1\nline2\nline3\nline4\nline5..."
+        );
     }
 
     #[test]
     fn handles_utf8_by_char_count() {
         let input = "あいうえおかきくけこ";
         assert_eq!(truncate_text(input, 6, 5), "あいう...");
+    }
+
+    #[test]
+    fn hud_width_regression_snapshot() {
+        let cases = vec![
+            ("ascii_short", "hello".to_string()),
+            ("ascii_40", "a".repeat(40)),
+            ("wide_20", "あ".repeat(20)),
+            ("ascii_very_long", "a".repeat(300)),
+        ];
+
+        let snapshot = cases
+            .iter()
+            .map(|(name, text)| format!("{name}: {:.1}", hud_width_for_text(text)))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        let expected = "\
+ascii_short: 200.0
+ascii_40: 446.0
+wide_20: 446.0
+ascii_very_long: 820.0";
+
+        assert_eq!(snapshot, expected);
+    }
+
+    #[test]
+    fn hud_layout_regression_snapshot() {
+        let cases = [
+            ("one_line", 600.0, 22.0),
+            ("three_lines", 600.0, 88.0),
+            ("overflow", 600.0, 400.0),
+            ("narrow_clamped", 100.0, 22.0),
+        ];
+
+        let snapshot = cases
+            .iter()
+            .map(|(name, width, measured)| {
+                let metrics = compute_hud_layout_metrics(*width, *measured);
+                format!(
+                    "{name}: w={:.1} text_w={:.1} h={:.1} text_h={:.1} label_y={:.1} icon_y={:.1}",
+                    metrics.width,
+                    metrics.text_width,
+                    metrics.height,
+                    metrics.text_height,
+                    metrics.label_y,
+                    metrics.icon_y
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        let expected = "\
+one_line: w=600.0 text_w=538.0 h=52.0 text_h=22.0 label_y=15.0 icon_y=15.0
+three_lines: w=600.0 text_w=538.0 h=108.0 text_h=88.0 label_y=10.0 icon_y=76.0
+overflow: w=600.0 text_w=538.0 h=280.0 text_h=260.0 label_y=10.0 icon_y=248.0
+narrow_clamped: w=200.0 text_w=138.0 h=52.0 text_h=22.0 label_y=15.0 icon_y=15.0";
+
+        assert_eq!(snapshot, expected);
     }
 }

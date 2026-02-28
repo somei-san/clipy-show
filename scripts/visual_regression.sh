@@ -46,6 +46,9 @@ run_case() {
     -u CLIIP_SHOW_HUD_DURATION_SECS
     -u CLIIP_SHOW_MAX_CHARS_PER_LINE
     -u CLIIP_SHOW_MAX_LINES
+    -u CLIIP_SHOW_HUD_POSITION
+    -u CLIIP_SHOW_HUD_SCALE
+    -u CLIIP_SHOW_HUD_BACKGROUND_COLOR
     "CLIIP_SHOW_CONFIG_PATH=$VRT_CONFIG_PATH"
   )
   if [[ $# -gt 0 ]]; then
@@ -150,6 +153,60 @@ run_case \
   $'abcdefghijklmnopqrstuvwxyz\nabcdefghijklmnopqrstuvwxyz\nabcdefghijklmnopqrstuvwxyz' \
   "CLIIP_SHOW_MAX_CHARS_PER_LINE=16" \
   "CLIIP_SHOW_MAX_LINES=2"
+
+# Settings profile: hud_position=top (position is validated by unit tests;
+# render-hud-png snapshots only HUD content, not screen coordinates)
+run_case \
+  "setting_hud_position_top" \
+  "hello clipboard" \
+  "CLIIP_SHOW_HUD_POSITION=top"
+
+# Settings profile: hud_scale variants
+run_case \
+  "setting_hud_scale_08" \
+  "hello clipboard" \
+  "CLIIP_SHOW_HUD_SCALE=0.8"
+
+run_case \
+  "setting_hud_scale_15" \
+  "hello clipboard" \
+  "CLIIP_SHOW_HUD_SCALE=1.5"
+
+run_case \
+  "setting_hud_scale_20" \
+  "hello clipboard" \
+  "CLIIP_SHOW_HUD_SCALE=2.0"
+
+# Settings profile: hud_background_color variants
+run_case \
+  "setting_hud_background_color_default" \
+  "hello clipboard" \
+  "CLIIP_SHOW_HUD_BACKGROUND_COLOR=default"
+
+run_case \
+  "setting_hud_background_color_yellow" \
+  "hello clipboard" \
+  "CLIIP_SHOW_HUD_BACKGROUND_COLOR=yellow"
+
+run_case \
+  "setting_hud_background_color_blue" \
+  "hello clipboard" \
+  "CLIIP_SHOW_HUD_BACKGROUND_COLOR=blue"
+
+run_case \
+  "setting_hud_background_color_green" \
+  "hello clipboard" \
+  "CLIIP_SHOW_HUD_BACKGROUND_COLOR=green"
+
+run_case \
+  "setting_hud_background_color_red" \
+  "hello clipboard" \
+  "CLIIP_SHOW_HUD_BACKGROUND_COLOR=red"
+
+run_case \
+  "setting_hud_background_color_purple" \
+  "hello clipboard" \
+  "CLIIP_SHOW_HUD_BACKGROUND_COLOR=purple"
 
 if $UPDATE; then
   echo "visual regression baseline updated"

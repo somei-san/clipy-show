@@ -151,11 +151,7 @@ git push origin v0.1.1
 
 タグのバージョンは `Cargo.toml` の `version` と同じ値にしてください（例: `0.1.1` -> `v0.1.1`）。
 
-### 3. Homebrew tap リポジトリ
-
-<https://github.com/somei-san/homebrew-tools>
-
-### 4. Formulaを生成する
+### 3. Formulaを生成する
 
 このリポジトリで以下を実行します。
 
@@ -165,10 +161,10 @@ git push origin v0.1.1
 
 バージョンは `0.1.1` のように `v` なしで指定してください（タグは内部で `v0.1.1` として参照されます）。
 
-生成された `Formula/cliip-show.rb` を [tap リポジトリ](https://github.com/somei-san/homebrew-tools) の `Formula/cliip-show.rb` としてコミットして push してください。
+生成された `Formula/cliip-show.rb` を [Homebrew tap リポジトリ](https://github.com/somei-san/homebrew-tools) の `Formula/cliip-show.rb` としてコミットして push してください。
 
 テンプレートは `packaging/homebrew/cliip-show.rb.template` にあります。
 
-### 5. ユーザーのインストール手順
+### 4. ユーザーのインストール手順
 
 [TapリポジトリのREADME参照](https://github.com/somei-san/homebrew-tools/blob/main/README.md)

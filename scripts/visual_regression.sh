@@ -49,7 +49,14 @@ run_case() {
     "CLIIP_SHOW_CONFIG_PATH=$VRT_CONFIG_PATH"
   )
   if [[ $# -gt 0 ]]; then
-    cmd+=("$@")
+    local override
+    for override in "$@"; do
+      if [[ ! "$override" =~ ^[A-Za-z_][A-Za-z0-9_]*=.*$ ]]; then
+        echo "invalid env override for run_case: $override (expected KEY=VALUE)" >&2
+        exit 2
+      fi
+      cmd+=("$override")
+    done
   fi
   cmd+=("$BIN" --render-hud-png --text "$text" --output "$current")
   "${cmd[@]}"

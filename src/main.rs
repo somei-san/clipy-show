@@ -458,10 +458,28 @@ fn handle_config_command<I: Iterator<Item = String>>(args: &mut I) -> bool {
             true
         }
         "init" => {
-            if args.next().is_some() {
-                eprintln!("Usage: cliip-show --config init");
+            let mut force = false;
+            if let Some(arg) = args.next() {
+                if arg == "--force" {
+                    force = true;
+                    if args.next().is_some() {
+                        eprintln!("Usage: cliip-show --config init [--force]");
+                        std::process::exit(2);
+                    }
+                } else {
+                    eprintln!("Usage: cliip-show --config init [--force]");
+                    std::process::exit(2);
+                }
+            }
+
+            if !force && path.exists() {
+                eprintln!(
+                    "config file already exists: {} (use --force to overwrite)",
+                    path.display()
+                );
                 std::process::exit(2);
             }
+
             let config = settings_to_config_file(default_display_settings());
             if let Err(error) = save_config_file(&path, &config) {
                 eprintln!("{error}");
@@ -582,6 +600,7 @@ fn handle_cli_flags() -> bool {
             let _ = writeln!(help);
             let _ = writeln!(help, "Config commands (persistent settings):");
             let _ = writeln!(help, "  cliip-show --config init");
+            let _ = writeln!(help, "  cliip-show --config init --force");
             let _ = writeln!(help, "  cliip-show --config show");
             let _ = writeln!(help, "  cliip-show --config set hud_duration_secs 2.5");
             let _ = writeln!(help, "  cliip-show --config set max_lines 3");

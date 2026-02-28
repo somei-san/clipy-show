@@ -1,0 +1,25 @@
+name: visual-regression
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  visual-regression:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Run unit tests
+        run: cargo test
+      - name: Run visual regression
+        run: ./scripts/visual_regression.sh
+      - name: Upload visual artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-regression-artifacts
+          path: tests/visual/artifacts/*.png
+          if-no-files-found: ignore

@@ -57,6 +57,26 @@ cargo bundle --release
 open target/release/bundle/osx/cliip-show.app
 ```
 
+### ビジュアルリグレッションテスト
+
+HUDの描画結果をPNGで比較します。
+
+```bash
+# 初回または意図的なUI変更時にベースラインを更新
+./scripts/visual_regression.sh --update
+
+# 通常の差分チェック
+./scripts/visual_regression.sh
+```
+
+差分がある場合は `tests/visual/artifacts/*.current.png` と `*.diff.png` が出力されます。  
+`*.diff.png` は差分箇所を赤で強調表示します。
+
+運用ルール:
+- 通常のPRでは `./scripts/visual_regression.sh` のみ実行
+- 意図したUI変更を入れたPRだけ `./scripts/visual_regression.sh --update` でベースラインを更新
+- GitHub側で `visual-regression` ワークフローを必須チェックに設定して運用
+
 ## Homebrewで公開する手順
 
 [Homebrewで公開する手順](docs/Homebrewで公開する手順.md)
@@ -64,4 +84,3 @@ open target/release/bundle/osx/cliip-show.app
 ## Homebrew tapリポジトリ
 
 <https://github.com/somei-san/homebrew-tools>
-

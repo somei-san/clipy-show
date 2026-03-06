@@ -964,8 +964,7 @@ fn render_hud_png(text: &str, output_path: &str) -> Result<(), String> {
         let message = nsstring_from_str(&truncated);
         let () = msg_send![label, setStringValue: message];
         let () = msg_send![message, release];
-        let hud_width = hud_width_for_text_with_scale(&truncated, settings.hud_scale);
-        layout_hud(window, icon_label, label, hud_width, settings);
+        layout_hud(window, icon_label, label, settings);
 
         let content_view: *mut AnyObject = msg_send![window, contentView];
         if content_view.is_null() {
@@ -1243,12 +1242,10 @@ extern "C" fn poll_pasteboard(this: &AnyObject, _: Sel, _: *mut AnyObject) {
         let () = msg_send![state.label, setStringValue: message];
         let () = msg_send![message, release];
 
-        let hud_width = hud_width_for_text_with_scale(&truncated, state.settings.hud_scale);
         layout_hud(
             state.window,
             state.icon_label,
             state.label,
-            hud_width,
             state.settings,
         );
         let () = msg_send![state.window, orderFrontRegardless];
@@ -1434,7 +1431,7 @@ unsafe fn create_hud_window(
     let () = msg_send![label, setEditable: false];
     let () = msg_send![label, setSelectable: false];
     let () = msg_send![label, setDrawsBackground: false];
-    let () = msg_send![label, setLineBreakMode: 2isize];
+    let () = msg_send![label, setLineBreakMode: 1isize];
     let () = msg_send![label, setUsesSingleLineMode: false];
     let () = msg_send![label, setMaximumNumberOfLines: 0isize];
     let () = msg_send![label, setAlignment: 0isize];
@@ -1454,7 +1451,7 @@ unsafe fn create_hud_window(
     if !cell.is_null() {
         let () = msg_send![cell, setWraps: true];
         let () = msg_send![cell, setScrollable: false];
-        let () = msg_send![cell, setLineBreakMode: 2isize];
+        let () = msg_send![cell, setLineBreakMode: 1isize];
     }
 
     let default_text = nsstring_from_str("Clipboard text");
@@ -1525,11 +1522,11 @@ unsafe fn layout_hud(
     window: *mut AnyObject,
     icon_label: *mut AnyObject,
     label: *mut AnyObject,
-    width: f64,
     settings: DisplaySettings,
 ) {
     let dims = hud_dimensions(settings.hud_scale);
-    let clamped_width = width.clamp(dims.min_width, dims.max_width);
+    let clamped_width = measure_text_natural_width(label, settings.hud_scale)
+        .clamp(dims.min_width, dims.max_width);
     let text_width = clamped_width - (dims.horizontal_padding * 2.0 + dims.icon_width + dims.gap);
     let measured_text_height = measure_text_height(label, text_width, settings.hud_scale);
     let metrics = compute_hud_layout_metrics_with_scale(
@@ -1562,6 +1559,26 @@ unsafe fn layout_hud(
     let () = msg_send![icon_label, setFrame: icon_rect];
     let () = msg_send![label, setFrame: label_rect];
     position_window(window, metrics.width, metrics.height, settings.hud_position);
+}
+
+unsafe fn measure_text_natural_width(label: *mut AnyObject, scale: f64) -> f64 {
+    let dims = hud_dimensions(scale);
+    let cell: *mut AnyObject = msg_send![label, cell];
+    if cell.is_null() {
+        return dims.min_width;
+    }
+
+    let bounds = NSRect {
+        origin: NSPoint { x: 0.0, y: 0.0 },
+        size: NSSize {
+            width: 1_000_000.0,
+            height: HUD_TEXT_MEASURE_HEIGHT,
+        },
+    };
+    let size: NSSize = msg_send![cell, cellSizeForBounds: bounds];
+    let text_content_width = size.width.ceil();
+    (text_content_width + dims.horizontal_padding * 2.0 + dims.icon_width + dims.gap)
+        .clamp(dims.min_width, dims.max_width)
 }
 
 unsafe fn measure_text_height(label: *mut AnyObject, text_width: f64, scale: f64) -> f64 {
@@ -1693,6 +1710,7 @@ fn hud_width_for_text(text: &str) -> f64 {
     hud_width_for_text_with_scale(text, DEFAULT_HUD_SCALE)
 }
 
+#[cfg(test)]
 fn hud_width_for_text_with_scale(text: &str, scale: f64) -> f64 {
     let dims = hud_dimensions(scale);
     let lines = split_non_trailing_lines(text);
@@ -1724,6 +1742,7 @@ fn split_non_trailing_lines(text: &str) -> Vec<&str> {
     lines
 }
 
+#[cfg(test)]
 fn line_display_units(line: &str) -> f64 {
     let units: f64 = line
         .chars()

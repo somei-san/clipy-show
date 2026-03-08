@@ -47,6 +47,7 @@ cliip-show --config show
 
 ```bash
 cliip-show --config set hud_duration_secs 2.5
+cliip-show --config set hud_fade_duration_secs 0.5
 cliip-show --config set max_lines 3
 cliip-show --config set hud_position top
 cliip-show --config set hud_scale 1.2
@@ -56,6 +57,7 @@ cliip-show --config set hud_background_color blue
 設定キー:
 - `poll_interval_secs`（既定値: `0.3`、`0.05` - `5.0`）
 - `hud_duration_secs`（既定値: `1.0`、`0.1` - `10.0`）
+- `hud_fade_duration_secs`（既定値: `0.3`、`0.0` - `2.0`、`0.0` でフェードなし）
 - `max_chars_per_line`（既定値: `100`、`1` - `500`）
 - `max_lines`（既定値: `5`、`1` - `20`）
 - `hud_position`（既定値: `top`、`top` / `center` / `bottom`）
@@ -66,6 +68,7 @@ cliip-show --config set hud_background_color blue
 
 ```bash
 CLIIP_SHOW_HUD_DURATION_SECS=2.5 \
+CLIIP_SHOW_HUD_FADE_DURATION_SECS=0.5 \
 CLIIP_SHOW_MAX_LINES=3 \
 CLIIP_SHOW_HUD_POSITION=top \
 CLIIP_SHOW_HUD_SCALE=1.2 \
@@ -151,7 +154,9 @@ git push origin v0.1.1
 
 タグのバージョンは `Cargo.toml` の `version` と同じ値にしてください（例: `0.1.1` -> `v0.1.1`）。
 
-### 3. Formulaを生成する
+タグを push すると GitHub 上にリリース用 tarball が生成されます。次の Formula 生成で使用します。
+
+### 3. Formulaを生成してコミットする
 
 このリポジトリで以下を実行します。
 
@@ -161,10 +166,18 @@ git push origin v0.1.1
 
 バージョンは `0.1.1` のように `v` なしで指定してください（タグは内部で `v0.1.1` として参照されます）。
 
-生成された `Formula/cliip-show.rb` を [Homebrew tap リポジトリ](https://github.com/somei-san/homebrew-tools) の `Formula/cliip-show.rb` としてコミットして push してください。
+生成された `Formula/cliip-show.rb` をこのリポジトリにコミットして push してください。
 
 テンプレートは `packaging/homebrew/cliip-show.rb.template` にあります。
 
-### 4. ユーザーのインストール手順
+### 4. main にマージする
 
-[TapリポジトリのREADME参照](https://github.com/somei-san/homebrew-tools/blob/main/README.md)
+PR をレビューして main にマージします。
+
+### 5. Tap リポジトリを更新する
+
+`Formula/cliip-show.rb` を [Homebrew Tapリポジトリ](https://github.com/somei-san/homebrew-tap) の `Formula/cliip-show.rb` としてコミットして push してください。
+
+### 6. ユーザーのインストール手順
+
+[TapリポジトリのREADME参照](https://github.com/somei-san/homebrew-tap/blob/main/README.md)

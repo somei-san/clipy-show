@@ -20,6 +20,9 @@ class CliipShow < Formula
 
       To stop:
         brew services stop cliip-show
+
+      To restart cliip-show after an upgrade:
+        brew services restart cliip-show
     EOS
   end
 

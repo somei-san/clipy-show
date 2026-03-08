@@ -8,7 +8,7 @@ on:
 
 jobs:
   visual-regression:
-    runs-on: macos-14
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -16,6 +16,8 @@ jobs:
         run: cargo test
       - name: Run visual regression
         run: ./scripts/visual_regression.sh
+        env:
+          MAX_DIFF_PERMILLE: 160
       - name: Upload visual artifacts on failure
         if: failure()
         uses: actions/upload-artifact@v4

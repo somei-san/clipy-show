@@ -15,7 +15,7 @@
 ## 概要
 
 - クリップボードの更新を監視し、コピー直後にHUD表示します
-- HUDは数秒で自動的に消えます
+- HUDは数秒で自動的にフェードアウトして消えます
 - アプリはバックグラウンドで常駐して動作します
 
 ## 動作環境
@@ -30,8 +30,7 @@
 ## インストール手順 （Homebrew経由）
 
 ```bash
-brew tap somei-san/tools
-brew install somei-san/tools/cliip-show
+brew install somei-san/tap/cliip-show
 brew services start cliip-show
 ```
 
@@ -41,4 +40,4 @@ brew services start cliip-show
 
 ## Homebrew tap リポジトリ
 
-<https://github.com/somei-san/homebrew-tools>
+<https://github.com/somei-san/homebrew-tap>

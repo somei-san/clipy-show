@@ -208,6 +208,56 @@ run_case \
   "hello clipboard" \
   "CLIIP_SHOW_HUD_BACKGROUND_COLOR=purple"
 
+# Layout stress: single line exceeding default max_chars_per_line=100 (truncated with ellipsis)
+run_case \
+  "over_max_chars" \
+  "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz"
+
+# Layout stress: multiple lines each exceeding max_chars_per_line, plus line count overflow
+run_case \
+  "over_max_chars_and_lines" \
+  $'abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz0123456789\nabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz0123456789\nabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz0123456789\nabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz0123456789\nabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz0123456789\nabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz0123456789'
+
+# Layout stress: no-space text exceeding max_chars_per_line (char-wrap + truncation)
+run_case \
+  "no_space_over_max_chars" \
+  "aVeryLongIdentifierNameThatDefinitelyExceedsOneHundredCharactersLimitSetByTheDefaultConfigurationValue"
+
+# Layout stress: single character (minimum HUD size)
+run_case \
+  "single_char" \
+  "x"
+
+# Layout stress: long text without any spaces (char-wrap must kick in, not clip)
+run_case \
+  "no_space_url" \
+  "https://example.com/very/long/path/with/many/segments/that/goes/on/and/on/without/spaces"
+
+# Layout stress: long camelCase token without spaces (code-like, no word boundaries)
+run_case \
+  "no_space_code" \
+  "aVeryLongVariableNameThatExceedsTheMaxWidthOfTheHudDisplayWithoutAnySpacesAtAll"
+
+# Layout stress: many short lines (width at minimum, height grows tall)
+run_case \
+  "many_short_lines" \
+  $'a\nb\nc\nd\ne'
+
+# Layout stress: line count overflow beyond default max_lines (truncation + ellipsis)
+run_case \
+  "many_lines_overflow" \
+  $'line1\nline2\nline3\nline4\nline5\nline6\nline7\nline8'
+
+# Layout stress: long CJK without spaces (full-width char-wrap)
+run_case \
+  "cjk_long_no_space" \
+  "あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほまみむめも"
+
+# Layout stress: mixed CJK and ASCII across multiple lines (uneven line widths)
+run_case \
+  "mixed_cjk_ascii_multiline" \
+  $'Hello 世界\n日本語 text\nこんにちは World'
+
 if $UPDATE; then
   echo "visual regression baseline updated"
   exit 0

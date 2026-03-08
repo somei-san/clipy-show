@@ -18,6 +18,9 @@ class CliipShow < Formula
       To launch cliip-show now and restart at login:
         brew services start cliip-show
 
+      After upgrading, restart the service to apply changes:
+        brew services restart cliip-show
+
       To stop:
         brew services stop cliip-show
     EOS

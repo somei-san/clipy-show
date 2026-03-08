@@ -47,6 +47,7 @@ cliip-show --config show
 
 ```bash
 cliip-show --config set hud_duration_secs 2.5
+cliip-show --config set hud_fade_duration_secs 0.5
 cliip-show --config set max_lines 3
 cliip-show --config set hud_position top
 cliip-show --config set hud_scale 1.2
@@ -56,6 +57,7 @@ cliip-show --config set hud_background_color blue
 設定キー:
 - `poll_interval_secs`（既定値: `0.3`、`0.05` - `5.0`）
 - `hud_duration_secs`（既定値: `1.0`、`0.1` - `10.0`）
+- `hud_fade_duration_secs`（既定値: `0.3`、`0.0` - `2.0`、`0.0` でフェードなし）
 - `max_chars_per_line`（既定値: `100`、`1` - `500`）
 - `max_lines`（既定値: `5`、`1` - `20`）
 - `hud_position`（既定値: `top`、`top` / `center` / `bottom`）
@@ -66,6 +68,7 @@ cliip-show --config set hud_background_color blue
 
 ```bash
 CLIIP_SHOW_HUD_DURATION_SECS=2.5 \
+CLIIP_SHOW_HUD_FADE_DURATION_SECS=0.5 \
 CLIIP_SHOW_MAX_LINES=3 \
 CLIIP_SHOW_HUD_POSITION=top \
 CLIIP_SHOW_HUD_SCALE=1.2 \

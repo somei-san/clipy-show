@@ -29,6 +29,7 @@ const HUD_GAP: f64 = 8.0;
 const HUD_CHAR_WIDTH_ESTIMATE: f64 = 9.6;
 const HUD_LINE_HEIGHT_ESTIMATE: f64 = 22.0;
 const HUD_TEXT_MEASURE_HEIGHT: f64 = 10_000.0;
+const HUD_TEXT_MEASURE_MAX_WIDTH: f64 = 1_000_000.0; // 折り返しが起きない十分大きな幅
 const HUD_CORNER_RADIUS: f64 = 14.0;
 const HUD_BORDER_WIDTH: f64 = 1.0;
 const HUD_ICON_FONT_SIZE: f64 = 18.0;
@@ -45,6 +46,10 @@ const MIN_HUD_DURATION_SECS: f64 = 0.1;
 const MAX_HUD_DURATION_SECS: f64 = 10.0;
 const MIN_HUD_SCALE: f64 = 0.5;
 const MAX_HUD_SCALE: f64 = 2.0;
+const DEFAULT_HUD_FADE_DURATION_SECS: f64 = 0.3;
+const MIN_HUD_FADE_DURATION_SECS: f64 = 0.0;
+const MAX_HUD_FADE_DURATION_SECS: f64 = 2.0;
+const FADE_TICK_INTERVAL_SECS: f64 = 1.0 / 60.0;
 const MIN_TRUNCATE_MAX_WIDTH: usize = 1;
 const MAX_TRUNCATE_MAX_WIDTH: usize = 500;
 const MIN_TRUNCATE_MAX_LINES: usize = 1;
@@ -58,6 +63,9 @@ struct AppState {
     icon_label: *mut AnyObject,
     label: *mut AnyObject,
     hide_timer: *mut AnyObject,
+    fade_timer: *mut AnyObject,
+    fade_ticks_elapsed: u32,
+    fade_total_ticks: u32,
     settings: DisplaySettings,
 }
 
@@ -143,6 +151,7 @@ impl HudBackgroundColor {
 struct DisplaySettings {
     poll_interval_secs: f64,
     hud_duration_secs: f64,
+    hud_fade_duration_secs: f64,
     truncate_max_width: usize,
     truncate_max_lines: usize,
     hud_position: HudPosition,
@@ -160,6 +169,7 @@ struct AppConfigFile {
 struct DisplayConfigFile {
     poll_interval_secs: Option<f64>,
     hud_duration_secs: Option<f64>,
+    hud_fade_duration_secs: Option<f64>,
     max_chars_per_line: Option<usize>,
     max_lines: Option<usize>,
     hud_position: Option<HudPosition>,
@@ -171,6 +181,7 @@ struct DisplayConfigFile {
 enum ConfigKey {
     PollIntervalSecs,
     HudDurationSecs,
+    HudFadeDurationSecs,
     MaxCharsPerLine,
     MaxLines,
     HudPosition,
@@ -200,6 +211,7 @@ fn default_display_settings() -> DisplaySettings {
     DisplaySettings {
         poll_interval_secs: POLL_INTERVAL_SECS,
         hud_duration_secs: HUD_DURATION_SECS,
+        hud_fade_duration_secs: DEFAULT_HUD_FADE_DURATION_SECS,
         truncate_max_width: DEFAULT_TRUNCATE_MAX_WIDTH,
         truncate_max_lines: DEFAULT_TRUNCATE_MAX_LINES,
         hud_position: HudPosition::Top,
@@ -244,6 +256,14 @@ fn apply_config_file(base: DisplaySettings, config: &AppConfigFile) -> DisplaySe
             MAX_HUD_DURATION_SECS,
         );
     }
+    if let Some(value) = config.display.hud_fade_duration_secs {
+        settings.hud_fade_duration_secs = parse_f64_value(
+            value,
+            settings.hud_fade_duration_secs,
+            MIN_HUD_FADE_DURATION_SECS,
+            MAX_HUD_FADE_DURATION_SECS,
+        );
+    }
     if let Some(value) = config.display.max_chars_per_line {
         settings.truncate_max_width =
             parse_usize_value(value, MIN_TRUNCATE_MAX_WIDTH, MAX_TRUNCATE_MAX_WIDTH);
@@ -281,6 +301,14 @@ fn apply_env_overrides(base: DisplaySettings) -> DisplaySettings {
             settings.hud_duration_secs,
             MIN_HUD_DURATION_SECS,
             MAX_HUD_DURATION_SECS,
+        );
+    }
+    if let Some(value) = read_env_option("CLIIP_SHOW_HUD_FADE_DURATION_SECS") {
+        settings.hud_fade_duration_secs = parse_f64_setting(
+            &value,
+            settings.hud_fade_duration_secs,
+            MIN_HUD_FADE_DURATION_SECS,
+            MAX_HUD_FADE_DURATION_SECS,
         );
     }
     if let Some(value) = read_env_option("CLIIP_SHOW_MAX_CHARS_PER_LINE") {
@@ -425,6 +453,9 @@ fn parse_config_key(raw: &str) -> Option<ConfigKey> {
     match raw {
         "poll_interval_secs" | "poll-interval-secs" => Some(ConfigKey::PollIntervalSecs),
         "hud_duration_secs" | "hud-duration-secs" => Some(ConfigKey::HudDurationSecs),
+        "hud_fade_duration_secs" | "hud-fade-duration-secs" => {
+            Some(ConfigKey::HudFadeDurationSecs)
+        }
         "max_chars_per_line" | "max-chars-per-line" => Some(ConfigKey::MaxCharsPerLine),
         "max_lines" | "max-lines" => Some(ConfigKey::MaxLines),
         "hud_position" | "hud-position" => Some(ConfigKey::HudPosition),
@@ -473,6 +504,24 @@ fn set_config_value(
             if parsed < MIN_HUD_DURATION_SECS || parsed > MAX_HUD_DURATION_SECS {
                 return Ok(Some(format!(
                     "hud_duration_secs was clamped from {parsed} to {clamped} (allowed range: {MIN_HUD_DURATION_SECS}..={MAX_HUD_DURATION_SECS})"
+                )));
+            }
+        }
+        ConfigKey::HudFadeDurationSecs => {
+            let raw = value.trim();
+            let parsed = raw
+                .parse::<f64>()
+                .map_err(|_| format!("invalid f64 value for hud_fade_duration_secs: {raw}"))?;
+            if !parsed.is_finite() {
+                return Err(format!(
+                    "invalid finite f64 value for hud_fade_duration_secs: {raw}"
+                ));
+            }
+            let clamped = parsed.clamp(MIN_HUD_FADE_DURATION_SECS, MAX_HUD_FADE_DURATION_SECS);
+            config.display.hud_fade_duration_secs = Some(clamped);
+            if parsed < MIN_HUD_FADE_DURATION_SECS || parsed > MAX_HUD_FADE_DURATION_SECS {
+                return Ok(Some(format!(
+                    "hud_fade_duration_secs was clamped from {parsed} to {clamped} (allowed range: {MIN_HUD_FADE_DURATION_SECS}..={MAX_HUD_FADE_DURATION_SECS})"
                 )));
             }
         }
@@ -541,6 +590,7 @@ fn set_config_value(
 fn print_effective_settings(settings: DisplaySettings) {
     println!("poll_interval_secs = {}", settings.poll_interval_secs);
     println!("hud_duration_secs = {}", settings.hud_duration_secs);
+    println!("hud_fade_duration_secs = {}", settings.hud_fade_duration_secs);
     println!("max_chars_per_line = {}", settings.truncate_max_width);
     println!("max_lines = {}", settings.truncate_max_lines);
     println!("hud_position = {}", settings.hud_position.as_str());
@@ -556,6 +606,7 @@ fn settings_to_config_file(settings: DisplaySettings) -> AppConfigFile {
         display: DisplayConfigFile {
             poll_interval_secs: Some(settings.poll_interval_secs),
             hud_duration_secs: Some(settings.hud_duration_secs),
+            hud_fade_duration_secs: Some(settings.hud_fade_duration_secs),
             max_chars_per_line: Some(settings.truncate_max_width),
             max_lines: Some(settings.truncate_max_lines),
             hud_position: Some(settings.hud_position),
@@ -608,6 +659,9 @@ fn handle_config_command<I: Iterator<Item = String>>(args: &mut I) -> bool {
                 }
                 if let Some(value) = config.display.hud_duration_secs {
                     println!("hud_duration_secs = {}", value);
+                }
+                if let Some(value) = config.display.hud_fade_duration_secs {
+                    println!("hud_fade_duration_secs = {}", value);
                 }
                 if let Some(value) = config.display.max_chars_per_line {
                     println!("max_chars_per_line = {}", value);
@@ -668,7 +722,7 @@ fn handle_config_command<I: Iterator<Item = String>>(args: &mut I) -> bool {
             let Some(key_raw) = args.next() else {
                 eprintln!("Usage: cliip-show --config set <key> <value>");
                 eprintln!(
-                    "Available keys: poll_interval_secs, hud_duration_secs, max_chars_per_line, max_lines, hud_position, hud_scale, hud_background_color"
+                    "Available keys: poll_interval_secs, hud_duration_secs, hud_fade_duration_secs, max_chars_per_line, max_lines, hud_position, hud_scale, hud_background_color"
                 );
                 std::process::exit(2);
             };
@@ -682,7 +736,7 @@ fn handle_config_command<I: Iterator<Item = String>>(args: &mut I) -> bool {
             }
             let Some(key) = parse_config_key(key_raw.trim()) else {
                 eprintln!(
-                    "Unknown key: {key_raw}. Available keys: poll_interval_secs, hud_duration_secs, max_chars_per_line, max_lines, hud_position, hud_scale, hud_background_color"
+                    "Unknown key: {key_raw}. Available keys: poll_interval_secs, hud_duration_secs, hud_fade_duration_secs, max_chars_per_line, max_lines, hud_position, hud_scale, hud_background_color"
                 );
                 std::process::exit(2);
             };
@@ -710,6 +764,7 @@ fn handle_config_command<I: Iterator<Item = String>>(args: &mut I) -> bool {
                 eprintln!("warning: {warning}");
             }
             println!("updated config: {}", path.display());
+            println!("hint: restart the service to apply changes: brew services restart cliip-show");
             println!("[effective]");
             let effective =
                 apply_env_overrides(apply_config_file(default_display_settings(), &config));
@@ -785,18 +840,19 @@ fn handle_cli_flags() -> bool {
             let _ = writeln!(help, "  cliip-show --config set hud_background_color blue");
             let _ = writeln!(help);
             let _ = writeln!(help, "Config keys:");
-            let _ = writeln!(help, "  poll_interval_secs   default=0.3 (0.05 - 5.0)");
-            let _ = writeln!(help, "  hud_duration_secs    default=1.0 (0.1 - 10.0)");
-            let _ = writeln!(help, "  max_chars_per_line   default=100 (1 - 500)");
-            let _ = writeln!(help, "  max_lines            default=5 (1 - 20)");
+            let _ = writeln!(help, "  poll_interval_secs      default=0.3 (0.05 - 5.0)");
+            let _ = writeln!(help, "  hud_duration_secs       default=1.0 (0.1 - 10.0)");
+            let _ = writeln!(help, "  hud_fade_duration_secs  default=0.3 (0.0 - 2.0)");
+            let _ = writeln!(help, "  max_chars_per_line      default=100 (1 - 500)");
+            let _ = writeln!(help, "  max_lines               default=5 (1 - 20)");
             let _ = writeln!(
                 help,
-                "  hud_position         default=top (top|center|bottom)"
+                "  hud_position            default=top (top|center|bottom)"
             );
-            let _ = writeln!(help, "  hud_scale            default=1.1 (0.5 - 2.0)");
+            let _ = writeln!(help, "  hud_scale               default=1.1 (0.5 - 2.0)");
             let _ = writeln!(
                 help,
-                "  hud_background_color default=default (default|yellow|blue|green|red|purple)"
+                "  hud_background_color    default=default (default|yellow|blue|green|red|purple)"
             );
             let _ = writeln!(help);
             let _ = writeln!(help, "For Homebrew service:");
@@ -964,8 +1020,7 @@ fn render_hud_png(text: &str, output_path: &str) -> Result<(), String> {
         let message = nsstring_from_str(&truncated);
         let () = msg_send![label, setStringValue: message];
         let () = msg_send![message, release];
-        let hud_width = hud_width_for_text_with_scale(&truncated, settings.hud_scale);
-        layout_hud(window, icon_label, label, hud_width, settings);
+        layout_hud(window, icon_label, label, settings);
 
         let content_view: *mut AnyObject = msg_send![window, contentView];
         if content_view.is_null() {
@@ -1176,6 +1231,7 @@ fn get_delegate_class() -> &'static AnyClass {
             poll_pasteboard as extern "C" fn(_, _, _),
         );
         builder.add_method(sel!(hideHud:), hide_hud as extern "C" fn(_, _, _));
+        builder.add_method(sel!(fadeTick:), fade_tick as extern "C" fn(_, _, _));
 
         let class = builder.register();
         CLASS = class as *const AnyClass;
@@ -1199,6 +1255,9 @@ extern "C" fn application_did_finish_launching(this: &AnyObject, _: Sel, _: *mut
             icon_label,
             label,
             hide_timer: ptr::null_mut(),
+            fade_timer: ptr::null_mut(),
+            fade_ticks_elapsed: 0,
+            fade_total_ticks: 0,
             settings,
         });
 
@@ -1243,14 +1302,20 @@ extern "C" fn poll_pasteboard(this: &AnyObject, _: Sel, _: *mut AnyObject) {
         let () = msg_send![state.label, setStringValue: message];
         let () = msg_send![message, release];
 
-        let hud_width = hud_width_for_text_with_scale(&truncated, state.settings.hud_scale);
         layout_hud(
             state.window,
             state.icon_label,
             state.label,
-            hud_width,
             state.settings,
         );
+
+        // フェード中なら止めてアルファを戻す
+        if !state.fade_timer.is_null() {
+            let () = msg_send![state.fade_timer, invalidate];
+            state.fade_timer = ptr::null_mut();
+        }
+        let () = msg_send![state.window, setAlphaValue: 1.0f64];
+
         let () = msg_send![state.window, orderFrontRegardless];
 
         if !state.hide_timer.is_null() {
@@ -1269,18 +1334,74 @@ extern "C" fn poll_pasteboard(this: &AnyObject, _: Sel, _: *mut AnyObject) {
     }
 }
 
-extern "C" fn hide_hud(_: &AnyObject, _: Sel, _: *mut AnyObject) {
+extern "C" fn hide_hud(this: &AnyObject, _: Sel, _: *mut AnyObject) {
     unsafe {
         let mut guard = APP_STATE.lock().expect("APP_STATE lock poisoned");
         let Some(state) = guard.as_mut() else {
             return;
         };
 
-        let () = msg_send![state.window, orderOut: ptr::null_mut::<AnyObject>()];
-
         if !state.hide_timer.is_null() {
             let () = msg_send![state.hide_timer, invalidate];
             state.hide_timer = ptr::null_mut();
+        }
+
+        let fade_duration = state.settings.hud_fade_duration_secs;
+        if fade_duration <= 0.0 {
+            // フェードなし: 即時非表示
+            if !state.fade_timer.is_null() {
+                let () = msg_send![state.fade_timer, invalidate];
+                state.fade_timer = ptr::null_mut();
+            }
+            let () = msg_send![state.window, orderOut: ptr::null_mut::<AnyObject>()];
+            return;
+        }
+
+        // フェードアウト開始
+        let total_fade_ticks = (fade_duration / FADE_TICK_INTERVAL_SECS).ceil() as u32;
+        state.fade_total_ticks = total_fade_ticks;
+        if !state.fade_timer.is_null() {
+            let () = msg_send![state.fade_timer, invalidate];
+            state.fade_timer = ptr::null_mut();
+        }
+        state.fade_ticks_elapsed = 0;
+
+        let fade_timer: *mut AnyObject = msg_send![
+            class!(NSTimer),
+            scheduledTimerWithTimeInterval: FADE_TICK_INTERVAL_SECS
+            target: this
+            selector: sel!(fadeTick:)
+            userInfo: ptr::null_mut::<AnyObject>()
+            repeats: true
+        ];
+        state.fade_timer = fade_timer;
+    }
+}
+
+extern "C" fn fade_tick(_: &AnyObject, _: Sel, timer: *mut AnyObject) {
+    unsafe {
+        let mut guard = APP_STATE.lock().expect("APP_STATE lock poisoned");
+        let Some(state) = guard.as_mut() else {
+            let () = msg_send![timer, invalidate];
+            return;
+        };
+
+        let window = state.window;
+        state.fade_ticks_elapsed += 1;
+
+        if state.fade_ticks_elapsed >= state.fade_total_ticks {
+            debug_assert!(!state.fade_timer.is_null());
+            let () = msg_send![timer, invalidate];
+            state.fade_timer = ptr::null_mut();
+            drop(guard);
+
+            let () = msg_send![window, setAlphaValue: 0.0f64];
+            let () = msg_send![window, orderOut: ptr::null_mut::<AnyObject>()];
+            let () = msg_send![window, setAlphaValue: 1.0f64];
+        } else {
+            let alpha = 1.0 - (state.fade_ticks_elapsed as f64 / state.fade_total_ticks as f64);
+            drop(guard);
+            let () = msg_send![window, setAlphaValue: alpha];
         }
     }
 }
@@ -1434,7 +1555,7 @@ unsafe fn create_hud_window(
     let () = msg_send![label, setEditable: false];
     let () = msg_send![label, setSelectable: false];
     let () = msg_send![label, setDrawsBackground: false];
-    let () = msg_send![label, setLineBreakMode: 2isize];
+    let () = msg_send![label, setLineBreakMode: 1isize];
     let () = msg_send![label, setUsesSingleLineMode: false];
     let () = msg_send![label, setMaximumNumberOfLines: 0isize];
     let () = msg_send![label, setAlignment: 0isize];
@@ -1454,7 +1575,7 @@ unsafe fn create_hud_window(
     if !cell.is_null() {
         let () = msg_send![cell, setWraps: true];
         let () = msg_send![cell, setScrollable: false];
-        let () = msg_send![cell, setLineBreakMode: 2isize];
+        let () = msg_send![cell, setLineBreakMode: 1isize];
     }
 
     let default_text = nsstring_from_str("Clipboard text");
@@ -1525,11 +1646,11 @@ unsafe fn layout_hud(
     window: *mut AnyObject,
     icon_label: *mut AnyObject,
     label: *mut AnyObject,
-    width: f64,
     settings: DisplaySettings,
 ) {
     let dims = hud_dimensions(settings.hud_scale);
-    let clamped_width = width.clamp(dims.min_width, dims.max_width);
+    let clamped_width = measure_text_natural_width(label, settings.hud_scale)
+        .clamp(dims.min_width, dims.max_width);
     let text_width = clamped_width - (dims.horizontal_padding * 2.0 + dims.icon_width + dims.gap);
     let measured_text_height = measure_text_height(label, text_width, settings.hud_scale);
     let metrics = compute_hud_layout_metrics_with_scale(
@@ -1562,6 +1683,25 @@ unsafe fn layout_hud(
     let () = msg_send![icon_label, setFrame: icon_rect];
     let () = msg_send![label, setFrame: label_rect];
     position_window(window, metrics.width, metrics.height, settings.hud_position);
+}
+
+unsafe fn measure_text_natural_width(label: *mut AnyObject, scale: f64) -> f64 {
+    let dims = hud_dimensions(scale);
+    let cell: *mut AnyObject = msg_send![label, cell];
+    if cell.is_null() {
+        return dims.min_width;
+    }
+
+    let bounds = NSRect {
+        origin: NSPoint { x: 0.0, y: 0.0 },
+        size: NSSize {
+            width: HUD_TEXT_MEASURE_MAX_WIDTH,
+            height: HUD_TEXT_MEASURE_HEIGHT,
+        },
+    };
+    let size: NSSize = msg_send![cell, cellSizeForBounds: bounds];
+    let text_content_width = size.width.ceil();
+    text_content_width + dims.horizontal_padding * 2.0 + dims.icon_width + dims.gap
 }
 
 unsafe fn measure_text_height(label: *mut AnyObject, text_width: f64, scale: f64) -> f64 {
@@ -1693,6 +1833,7 @@ fn hud_width_for_text(text: &str) -> f64 {
     hud_width_for_text_with_scale(text, DEFAULT_HUD_SCALE)
 }
 
+#[cfg(test)]
 fn hud_width_for_text_with_scale(text: &str, scale: f64) -> f64 {
     let dims = hud_dimensions(scale);
     let lines = split_non_trailing_lines(text);
@@ -1724,6 +1865,7 @@ fn split_non_trailing_lines(text: &str) -> Vec<&str> {
     lines
 }
 
+#[cfg(test)]
 fn line_display_units(line: &str) -> f64 {
     let units: f64 = line
         .chars()
@@ -1944,4 +2086,38 @@ narrow_clamped: w=220.0 text_w=151.8 h=57.2 text_h=24.2 label_y=16.5 icon_y=16.5
         assert_eq!(config.display.hud_position, None);
         assert_eq!(config.display.hud_background_color, None);
     }
+
+    #[test]
+    fn fade_total_ticks_calculation_is_exact() {
+        // fade_duration=DEFAULT_HUD_FADE_DURATION_SECS, FADE_TICK_INTERVAL_SECS=1/60 → 18 ticks
+        let total = (super::DEFAULT_HUD_FADE_DURATION_SECS / super::FADE_TICK_INTERVAL_SECS).ceil() as u32;
+        assert_eq!(total, 18);
+    }
+
+    #[test]
+    fn fade_alpha_is_positive_at_penultimate_tick() {
+        // elapsed >= total のとき fade_tick は termination ブランチへ進み alpha 計算は行われない。
+        // 計算式が呼ばれる最後の tick は elapsed = total - 1。
+        // そのとき alpha は 0.0 より大きく 1/total 以下になることを確認する。
+        let total: u32 = 18;
+        let elapsed: u32 = total - 1;
+        let alpha = 1.0 - (elapsed as f64 / total as f64);
+        assert!(alpha > 0.0, "alpha should be > 0.0, got {}", alpha);
+        // 浮動小数点誤差を考慮し、等値確認する
+        assert!(
+            (alpha - 1.0 / total as f64).abs() < 1e-10,
+            "alpha should be approximately 1/total={}, got {}",
+            1.0 / total as f64,
+            alpha
+        );
+    }
+
+    #[test]
+    fn fade_alpha_is_half_at_midpoint() {
+        let total: u32 = 18;
+        let elapsed: u32 = 9; // 半分経過
+        let alpha = 1.0 - (elapsed as f64 / total as f64);
+        assert!((alpha - 0.5).abs() < 1e-10, "alpha={}", alpha);
+    }
+
 }

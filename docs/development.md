@@ -164,10 +164,10 @@ git push origin v0.1.1
 
 バージョンは `0.1.1` のように `v` なしで指定してください（タグは内部で `v0.1.1` として参照されます）。
 
-生成された `Formula/cliip-show.rb` を [Homebrew tap リポジトリ](https://github.com/somei-san/homebrew-tools) の `Formula/cliip-show.rb` としてコミットして push してください。
+生成された `Formula/cliip-show.rb` を [Homebrew Tapリポジトリ](https://github.com/somei-san/homebrew-tap) の `Formula/cliip-show.rb` としてコミットしてpushしてください。
 
 テンプレートは `packaging/homebrew/cliip-show.rb.template` にあります。
 
 ### 4. ユーザーのインストール手順
 
-[TapリポジトリのREADME参照](https://github.com/somei-san/homebrew-tools/blob/main/README.md)
+[TapリポジトリのREADME参照](https://github.com/somei-san/homebrew-tap/blob/main/README.md)
